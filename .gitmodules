@@ -1,0 +1,3 @@
+[submodule "stable-datasets"]
+	path = stable-datasets
+	url = https://github.com/Stability-AI/datapipelines.git
