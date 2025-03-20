@@ -399,11 +399,13 @@ class Encoder3D(nn.Module):
         double_z=True,
         attn_heads=4,
         attn_dim_head=32,
+        n_classes: int = 0,
+        cond_dim: int = 32,
         **ignore_kwargs,
     ):
         super().__init__()
         self.ch = ch
-        self.temb_ch = 0
+        self.temb_ch = n_classes
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
@@ -500,9 +502,9 @@ class Encoder3D(nn.Module):
             padding=(1, 1, 1),
         )
 
-    def forward(self, x):
+    def forward(self, x, cond=None):
         # timestep embedding
-        temb = None
+        temb = cond
 
         # downsampling
         hs = [self.conv_in(x)]
@@ -548,13 +550,15 @@ class Decoder3D(nn.Module):
         attn_heads=4,
         attn_dim_head=32,
         attn_type="vanilla",
+        n_classes: int = 0,
+        cond_dim: int = 32,
         **ignorekwargs,
     ):
         super().__init__()
         if use_linear_attn:
             attn_type = "linear"
         self.ch = ch
-        self.temb_ch = 0
+        self.temb_ch = n_classes
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = np.array(resolution)
@@ -652,12 +656,12 @@ class Decoder3D(nn.Module):
             block_in, out_ch, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)
         )
 
-    def forward(self, z):
+    def forward(self, z, cond=None):
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
         # timestep embedding
-        temb = None
+        temb = cond
 
         # z to block_in
         h = self.conv_in(z)
