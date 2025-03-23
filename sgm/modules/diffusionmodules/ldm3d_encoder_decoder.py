@@ -167,14 +167,14 @@ class ResnetBlock(nn.Module):
 
         self.norm1 = Normalize(in_channels)
         self.conv1 = nn.Sequential(
-            torch.nn.Conv3d(
+            nn.Conv3d(
                 in_channels,
                 out_channels,
                 kernel_size=(1, 3, 3),
                 stride=1,
                 padding=(0, 1, 1),
             ),
-            torch.nn.Conv3d(
+            nn.Conv3d(
                 out_channels,
                 out_channels,
                 kernel_size=(3, 1, 1),
@@ -183,18 +183,19 @@ class ResnetBlock(nn.Module):
             ),
         )
         if temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
+            # self.temb_proj = nn.Linear(temb_channels, out_channels)
+            self.temb_proj = nn.Embedding(temb_channels, out_channels) # Use embedding for compatibility. VideoUNet uses Embedding for the class conditioning, so the input has to be in index for, not one-hot encoded.
         self.norm2 = Normalize(out_channels)
-        self.dropout = torch.nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Sequential(
-            torch.nn.Conv3d(
+            nn.Conv3d(
                 out_channels,
                 out_channels,
                 kernel_size=(1, 3, 3),
                 stride=1,
                 padding=(0, 1, 1),
             ),
-            torch.nn.Conv3d(
+            nn.Conv3d(
                 out_channels,
                 out_channels,
                 kernel_size=(3, 1, 1),
@@ -400,7 +401,6 @@ class Encoder3D(nn.Module):
         attn_heads=4,
         attn_dim_head=32,
         n_classes: int = 0,
-        cond_dim: int = 32,
         **ignore_kwargs,
     ):
         super().__init__()
@@ -551,7 +551,6 @@ class Decoder3D(nn.Module):
         attn_dim_head=32,
         attn_type="vanilla",
         n_classes: int = 0,
-        cond_dim: int = 32,
         **ignorekwargs,
     ):
         super().__init__()
