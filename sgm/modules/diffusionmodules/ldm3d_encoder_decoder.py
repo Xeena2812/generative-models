@@ -384,6 +384,7 @@ class Attention(nn.Module):
 
 
 class Encoder3D(nn.Module):
+    # TODO: Modify encode/decode to account for class and connectome conditioning
     def __init__(
         self,
         *,
@@ -502,9 +503,9 @@ class Encoder3D(nn.Module):
             padding=(1, 1, 1),
         )
 
-    def forward(self, x, cond=None):
+    def forward(self, x, label=None):
         # timestep embedding
-        temb = cond
+        temb = label
 
         # downsampling
         hs = [self.conv_in(x)]
@@ -655,12 +656,12 @@ class Decoder3D(nn.Module):
             block_in, out_ch, kernel_size=(3, 3, 3), stride=1, padding=(1, 1, 1)
         )
 
-    def forward(self, z, cond=None):
+    def forward(self, z, label=None):
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
         # timestep embedding
-        temb = cond
+        temb = label
 
         # z to block_in
         h = self.conv_in(z)
