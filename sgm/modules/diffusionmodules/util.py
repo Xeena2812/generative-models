@@ -397,3 +397,17 @@ class AlphaBlender(nn.Module):
             + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
         )
         return x
+
+class AdaptiveInstanceNorm(nn.Module):
+    def __init__(self, eps=1e-5):
+        super(AdaptiveInstanceNorm, self).__init__()
+        self.eps = eps
+
+    def forward(self, latent, embed):
+        latent_mean = latent.mean(dim=(2, 3, 4), keepdim=True)
+        latent_std = latent.std(dim=(2, 3, 4), keepdim=True)
+        embed_mean = embed.mean(dim=(2, 3, 4), keepdim=True)
+        embed_std = embed.std(dim=(2, 3, 4), keepdim=True)
+
+        normalized_latent = (latent - latent_mean) / (latent_std + self.eps)
+        return normalized_latent * embed_std + embed_mean

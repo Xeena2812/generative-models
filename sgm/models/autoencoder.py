@@ -4,6 +4,7 @@ import re
 from abc import abstractmethod
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
+from functools import reduce
 
 import pytorch_lightning as pl
 import torch
@@ -14,7 +15,8 @@ from packaging import version
 from ..modules.autoencoding.regularizers import AbstractRegularizer
 from ..modules.ema import LitEma
 from ..util import (default, get_nested_attribute, get_obj_from_str,
-                    instantiate_from_config)
+                    instantiate_from_config,)
+from ..modules.diffusionmodules.util import AdaptiveInstanceNorm
 
 logpy = logging.getLogger(__name__)
 
@@ -181,6 +183,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             params += list(self.regularization.get_trainable_parameters())
         params = params + list(self.encoder.parameters())
         params = params + list(self.decoder.parameters())
+
         return params
 
     def get_discriminator_params(self) -> list:
@@ -432,6 +435,183 @@ class AutoencodingEngine(AbstractAutoencoder):
             )
             log[log_str] = xrec_add
         return log
+
+class MLDHPAutoEncodingEngine(AutoencodingEngine):
+    """AutoencodingEngine extended with class conditioning and multiple inputs (for ROIs, connectomes). Class conditioning is implemented by passing the classes to both the encoder and the decoder. The conditioning input is in `additional_decode_kwargs` as the `cond` argument."""
+    # TODO: Modify encode/decode to account for class and connectome conditioning
+    # TODO: Add sampling capability
+    def __init__(self, **kwargs):
+        super.__init__()
+        # self.input_keys = input_keys # DO NOT confuse with input_key, this contain
+        print(f"additional_decode_kwargs: {[str(item) + ", " for item in self.additional_decode_kwargs.kseys()]}")
+
+        self.condition_embed = nn.Sequential(
+            nn.Conv2d(2, 4, kernel_size=3, stride=2, padding=1),  # Reduced kernel size
+            nn.ReLU(),
+            nn.Conv2d(4, 8, kernel_size=3, stride=2, padding=1),  # Reduced kernel size
+            nn.ReLU(),
+            nn.Flatten()
+        )
+
+        # Calculate the output size of the convolutional layers
+        with torch.no_grad():
+            # assumes both ROI and connectome stacked with hardcoded size
+            test_tensor = torch.zeros(1, 2, 42, 42)
+            test_out = self.condition_embed(test_tensor)
+            self._conv_end_shape = test_out.shape[-1]
+
+        embed_linear = nn.Linear(self._conv_end_shape, reduce(lambda a, b: a * b, self.decoder.z_shape[1:], 1))
+
+        self.condition_embed = nn.Sequential(self.condition_embed, embed_linear, nn.Relu())
+
+        self.adain = AdaptiveInstanceNorm()
+
+    def get_autoencoder_params(self) -> list:
+        params = super.get_autoencoder_params()
+        params = params + list(self.condition_embed.parameters())
+
+        return params
+
+
+    def get_input(batch: dict, key: str) -> torch.Tensor:
+        return batch["key"] if key in batch.keys() else None
+
+    # Encoder/Decoder3D not yet ready to be passed the roi and connectomes
+    def encode(
+        self,
+        x: torch.Tensor,
+        return_reg_log: bool = False,
+        unregularized: bool = False,
+        **kwargs
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
+        z = self.encoder(x, **kwargs)
+        if unregularized:
+            return z, dict()
+        z, reg_log = self.regularization(z)
+        if return_reg_log:
+            return z, reg_log
+        return z
+
+
+    def forward(
+        self, x: torch.Tensor, **additional_decode_kwargs
+    ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
+        z, reg_log = self.encode(x, return_reg_log=True, **additional_decode_kwargs)
+
+        if "roi" in self.additional_decode_keys and "connectome" in self.additional_decode_keys:
+            condition_embedding = self.condition_embed(torch.stack([self.additional_decode_keys["roi"], self.additional_decode_keys["connectome"]]), axis=1)
+            condition_embedding = condition_embedding.view(
+                condition_embedding.shape[0], *self.decoder.z_shape[1:]
+            )
+            z = self.adain(z, condition_embedding)
+
+        dec = self.decode(z, **additional_decode_kwargs)
+        return z, dec, reg_log
+
+
+    def inner_training_step(
+        self, batch: dict, batch_idx: int, optimizer_idx: int = 0
+    ) -> torch.Tensor:
+        additional_decode_kwargs = {
+            key: self.get_input(batch[key]) for key in self.additional_decode_keys.intersection(batch)
+        }
+        fmri = self.get_input(batch, self.input_key)
+
+        z, xrec, regularization_log = self(fmri, **additional_decode_kwargs)
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": optimizer_idx,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "train",
+                "regularization_log": regularization_log,
+                "autoencoder": self,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
+
+        if optimizer_idx == 0:
+            # autoencode
+            out_loss = self.loss(fmri, xrec, **extra_info)
+            if isinstance(out_loss, tuple):
+                aeloss, log_dict_ae = out_loss
+            else:
+                # simple loss function
+                aeloss = out_loss
+                log_dict_ae = {"train/loss/rec": aeloss.detach()}
+
+            self.log_dict(
+                log_dict_ae,
+                prog_bar=False,
+                logger=True,
+                on_step=True,
+                on_epoch=True,
+                sync_dist=False,
+            )
+            self.log(
+                "loss",
+                aeloss.mean().detach(),
+                prog_bar=True,
+                logger=False,
+                on_epoch=False,
+                on_step=True,
+            )
+            return aeloss
+        elif optimizer_idx == 1:
+            # discriminator
+            discloss, log_dict_disc = self.loss(fmri, xrec, **extra_info)
+            # -> discriminator always needs to return a tuple
+            self.log_dict(
+                log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True
+            )
+            return discloss
+        else:
+            raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
+
+
+    def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
+        additional_decode_kwargs = {
+            key: self.get_input(batch[key]) for key in self.additional_decode_keys.intersection(batch)
+        }
+        fmri = self.get_input(batch, self.input_key)
+
+        z, xrec, regularization_log = self(fmri, **additional_decode_kwargs)
+
+        if hasattr(self.loss, "forward_keys"):
+            extra_info = {
+                "z": z,
+                "optimizer_idx": 0,
+                "global_step": self.global_step,
+                "last_layer": self.get_last_layer(),
+                "split": "val" + postfix,
+                "regularization_log": regularization_log,
+                "autoencoder": self,
+            }
+            extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        else:
+            extra_info = dict()
+        out_loss = self.loss(fmri, xrec, **extra_info)
+        if isinstance(out_loss, tuple):
+            aeloss, log_dict_ae = out_loss
+        else:
+            # simple loss function
+            aeloss = out_loss
+            log_dict_ae = {f"val{postfix}/loss/rec": aeloss.detach()}
+        full_log_dict = log_dict_ae
+
+        if "optimizer_idx" in extra_info:
+            extra_info["optimizer_idx"] = 1
+            discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
+            full_log_dict.update(log_dict_disc)
+        self.log(
+            f"val{postfix}/loss/rec",
+            log_dict_ae[f"val{postfix}/loss/rec"],
+            sync_dist=True,
+        )
+        self.log_dict(full_log_dict, sync_dist=True)
+        return full_log_dict
 
 
 class AutoencodingEngineLegacy(AutoencodingEngine):
