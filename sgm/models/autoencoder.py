@@ -193,8 +193,10 @@ class AutoencodingEngine(AbstractAutoencoder):
             params = []
         return params
 
+
     def get_last_layer(self):
         return self.decoder.get_last_layer()
+
 
     def encode(
         self,
@@ -436,15 +438,19 @@ class AutoencodingEngine(AbstractAutoencoder):
             log[log_str] = xrec_add
         return log
 
-class MLDHPAutoEncodingEngine(AutoencodingEngine):
+class MLHDPAutoencodingEngine(AutoencodingEngine):
     """AutoencodingEngine extended with class conditioning and multiple inputs (for ROIs, connectomes). Class conditioning is implemented by passing the classes to both the encoder and the decoder. The conditioning input is in `additional_decode_kwargs` as the `cond` argument."""
     # TODO: Modify encode/decode to account for class and connectome conditioning
-    # TODO: Add sampling capability
-    def __init__(self, **kwargs):
-        super.__init__()
+    # # TODO: Add sampling capability
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # self.input_keys = input_keys # DO NOT confuse with input_key, this contain
-        print(f"additional_decode_kwargs: {[str(item) + ", " for item in self.additional_decode_kwargs.kseys()]}")
+        print(f"additional_decode_kwargs: {[item + ", " for item in self.additional_decode_keys]}")
 
+        if {"roi", "connectome"}.issubset(self.additional_decode_keys):
+            self.create_connectome_embedding()
+
+    def create_connectome_embedding(self):
         self.condition_embed = nn.Sequential(
             nn.Conv2d(2, 4, kernel_size=3, stride=2, padding=1),  # Reduced kernel size
             nn.ReLU(),
@@ -462,7 +468,7 @@ class MLDHPAutoEncodingEngine(AutoencodingEngine):
 
         embed_linear = nn.Linear(self._conv_end_shape, reduce(lambda a, b: a * b, self.decoder.z_shape[1:], 1))
 
-        self.condition_embed = nn.Sequential(self.condition_embed, embed_linear, nn.Relu())
+        self.condition_embed = nn.Sequential(self.condition_embed, embed_linear, nn.ReLU())
 
         self.adain = AdaptiveInstanceNorm()
 
@@ -498,7 +504,7 @@ class MLDHPAutoEncodingEngine(AutoencodingEngine):
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
         z, reg_log = self.encode(x, return_reg_log=True, **additional_decode_kwargs)
 
-        if "roi" in self.additional_decode_keys and "connectome" in self.additional_decode_keys:
+        if {"roi", "connectome"}.issubset(self.additional_decode_keys):
             condition_embedding = self.condition_embed(torch.stack([self.additional_decode_keys["roi"], self.additional_decode_keys["connectome"]]), axis=1)
             condition_embedding = condition_embedding.view(
                 condition_embedding.shape[0], *self.decoder.z_shape[1:]
@@ -603,7 +609,7 @@ class MLDHPAutoEncodingEngine(AutoencodingEngine):
 
         if "optimizer_idx" in extra_info:
             extra_info["optimizer_idx"] = 1
-            discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
+            discloss, log_dict_disc = self.loss(fmri, xrec, **extra_info)
             full_log_dict.update(log_dict_disc)
         self.log(
             f"val{postfix}/loss/rec",
