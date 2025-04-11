@@ -473,7 +473,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         self.adain = AdaptiveInstanceNorm()
 
     def get_autoencoder_params(self) -> list:
-        params = super.get_autoencoder_params()
+        params = super().get_autoencoder_params()
         params = params + list(self.condition_embed.parameters())
 
         return params
@@ -618,6 +618,14 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         )
         self.log_dict(full_log_dict, sync_dist=True)
         return full_log_dict
+
+    # TODO: Handle connectomes
+    def sample(self, batch_size: int, **kwargs):
+        z = torch.randn(batch_size, self.decoder.z_shape, device=self.device)
+        z, _ = self.regularization(z)
+
+        dec = self.decode(z, **kwargs)
+        return dec
 
 
 class AutoencodingEngineLegacy(AutoencodingEngine):

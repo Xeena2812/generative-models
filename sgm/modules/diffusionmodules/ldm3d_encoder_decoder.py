@@ -407,6 +407,7 @@ class Encoder3D(nn.Module):
         super().__init__()
         self.ch = ch
         self.temb_ch = n_classes
+        self.n_classes = n_classes
         self.num_resolutions = len(ch_mult)
         self.num_res_blocks = num_res_blocks
         self.resolution = resolution
