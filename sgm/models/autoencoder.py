@@ -447,7 +447,9 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         # self.input_keys = input_keys # DO NOT confuse with input_key, this contain
         print(f"additional_decode_kwargs: {[item + ", " for item in self.additional_decode_keys]}")
 
+        self.connectome_cond = False
         if {"roi", "connectome"}.issubset(self.additional_decode_keys):
+            self.connectome_cond = True
             self.create_connectome_embedding()
 
     def create_connectome_embedding(self):
@@ -474,7 +476,8 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
 
     def get_autoencoder_params(self) -> list:
         params = super().get_autoencoder_params()
-        params = params + list(self.condition_embed.parameters())
+        if self.connectome_cond:
+            params = params + list(self.condition_embed.parameters())
 
         return params
 
@@ -504,7 +507,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
         z, reg_log = self.encode(x, return_reg_log=True, **additional_decode_kwargs)
 
-        if {"roi", "connectome"}.issubset(self.additional_decode_keys):
+        if self.connectome_cond:
             condition_embedding = self.condition_embed(torch.stack([self.additional_decode_keys["roi"], self.additional_decode_keys["connectome"]]), axis=1)
             condition_embedding = condition_embedding.view(
                 condition_embedding.shape[0], *self.decoder.z_shape[1:]
