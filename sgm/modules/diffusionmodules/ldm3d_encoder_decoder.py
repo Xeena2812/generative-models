@@ -184,7 +184,8 @@ class ResnetBlock(nn.Module):
         )
         if temb_channels > 0:
             # self.temb_proj = nn.Linear(temb_channels, out_channels)
-            self.temb_proj = nn.Embedding(temb_channels, out_channels) # Use embedding for compatibility. VideoUNet uses Embedding for the class conditioning, so the input has to be in index for, not one-hot encoded.
+            # TODO: Create separate embedding for classes that uses nn.Embedding without linearity layer.
+            self.temb_proj = nn.Linear(temb_channels, out_channels)
         self.norm2 = Normalize(out_channels)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Sequential(
@@ -233,7 +234,8 @@ class ResnetBlock(nn.Module):
         h = self.conv1(h)
 
         if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
+            proj = self.temb_proj(nonlinearity(temb))
+            h = h + proj[:, :, *(None, ) * (len(h.shape) - len(proj.shape))]
 
         h = self.norm2(h)
         h = nonlinearity(h)
@@ -693,6 +695,9 @@ class Decoder3D(nn.Module):
         if self.tanh_out:
             h = torch.tanh(h)
         return h
+
+    def get_last_layer(self, **kwargs):
+        return self.conv_out.weight
 
 
 from math import pi, log

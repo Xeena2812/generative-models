@@ -17,6 +17,7 @@ from ..modules.ema import LitEma
 from ..util import (default, get_nested_attribute, get_obj_from_str,
                     instantiate_from_config,)
 from ..modules.diffusionmodules.util import AdaptiveInstanceNorm
+from ..modules.autoencoding.losses.lpips_nd import LPIPSWithDiscriminator
 
 logpy = logging.getLogger(__name__)
 
@@ -302,9 +303,10 @@ class AutoencodingEngine(AbstractAutoencoder):
 
     def validation_step(self, batch: dict, batch_idx: int) -> Dict:
         log_dict = self._validation_step(batch, batch_idx)
-        with self.ema_scope():
-            log_dict_ema = self._validation_step(batch, batch_idx, postfix="_ema")
-            log_dict.update(log_dict_ema)
+        if self.use_ema:
+            with self.ema_scope():
+                log_dict_ema = self._validation_step(batch, batch_idx, postfix="_ema")
+                log_dict.update(log_dict_ema)
         return log_dict
 
     def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
@@ -538,6 +540,13 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "autoencoder": self,
             }
             extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        elif isinstance(self.loss, LPIPSWithDiscriminator):
+            extra_info = {
+                "posteriors": None,
+                "global_step": self.global_step,
+                "split": "val",
+                "last_layer": self.decoder.get_last_layer(),
+            }
         else:
             extra_info = dict()
 
@@ -599,6 +608,13 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "autoencoder": self,
             }
             extra_info = {k: extra_info[k] for k in self.loss.forward_keys}
+        elif isinstance(self.loss, LPIPSWithDiscriminator):
+            extra_info = {
+                "posteriors": None,
+                "global_step": self.global_step,
+                "split": "val",
+                "last_layer": self.decoder.get_last_layer(),
+            }
         else:
             extra_info = dict()
         out_loss = self.loss(fmri, xrec, **extra_info)
@@ -612,7 +628,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
 
         if "optimizer_idx" in extra_info:
             extra_info["optimizer_idx"] = 1
-            discloss, log_dict_disc = self.loss(fmri, xrec, **extra_info)
+            _, log_dict_disc = self.loss(fmri, xrec, **extra_info)
             full_log_dict.update(log_dict_disc)
         self.log(
             f"val{postfix}/loss/rec",
