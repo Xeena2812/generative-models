@@ -535,7 +535,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         self, batch: dict, batch_idx: int, optimizer_idx: int = 0
     ) -> torch.Tensor:
         additional_decode_kwargs = {
-            key: self.get_input(batch[key]) for key in self.additional_decode_keys.intersection(batch)
+            key: self.get_input(batch, key) for key in self.additional_decode_keys.intersection(batch)
         }
         fmri = self.get_input(batch, self.input_key)
 
@@ -571,7 +571,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 aeloss = out_loss
                 log_dict_ae = {"train/loss/rec": aeloss.detach()}
 
-            full_log_dict = send_metrics_to_device(full_log_dict, self.device)
+            log_dict_ae = send_metrics_to_device(log_dict_ae, self.device)
 
             self.log_dict(
                 log_dict_ae,
@@ -660,6 +660,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         return full_log_dict
 
     # TODO: Handle connectomes
+    @torch.no_grad()
     def sample(self, batch_size: int, **kwargs):
         z = torch.randn(size=(batch_size, *self.decoder.z_shape[1:]), device=self.device)
         # z, _ = self.regularization(z)
