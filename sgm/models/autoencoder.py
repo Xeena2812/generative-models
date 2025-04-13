@@ -640,8 +640,8 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
 
     # TODO: Handle connectomes
     def sample(self, batch_size: int, **kwargs):
-        z = torch.randn(batch_size, self.decoder.z_shape, device=self.device)
-        z, _ = self.regularization(z)
+        z = torch.randn(size=(batch_size, *self.decoder.z_shape[1:]), device=self.device)
+        # z, _ = self.regularization(z)
 
         dec = self.decode(z, **kwargs)
         return dec
