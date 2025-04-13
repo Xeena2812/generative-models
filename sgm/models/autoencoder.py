@@ -482,8 +482,8 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         return params
 
 
-    def get_input(batch: dict, key: str) -> torch.Tensor:
-        return batch["key"] if key in batch.keys() else None
+    def get_input(self, batch: dict, key: str) -> torch.Tensor:
+        return batch[key] if key in batch.keys() else None
 
     # Encoder/Decoder3D not yet ready to be passed the roi and connectomes
     def encode(
@@ -582,7 +582,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
 
     def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
         additional_decode_kwargs = {
-            key: self.get_input(batch[key]) for key in self.additional_decode_keys.intersection(batch)
+            key: self.get_input(batch, key) for key in self.additional_decode_keys.intersection(batch)
         }
         fmri = self.get_input(batch, self.input_key)
 
