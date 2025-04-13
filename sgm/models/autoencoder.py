@@ -21,6 +21,10 @@ from ..modules.autoencoding.losses.lpips_nd import LPIPSWithDiscriminator
 
 logpy = logging.getLogger(__name__)
 
+def send_metrics_to_device(metrics_dict, device):
+    return {k: (v.to(device) if isinstance(v, torch.Tensor) else v)
+                for k, v in metrics_dict.items()}
+
 
 class AbstractAutoencoder(pl.LightningModule):
     """
@@ -256,6 +260,8 @@ class AutoencodingEngine(AbstractAutoencoder):
                 aeloss = out_loss
                 log_dict_ae = {"train/loss/rec": aeloss.detach()}
 
+            log_dict_ae = send_metrics_to_device(log_dict_ae, self.device)
+
             self.log_dict(
                 log_dict_ae,
                 prog_bar=False,
@@ -277,6 +283,8 @@ class AutoencodingEngine(AbstractAutoencoder):
             # discriminator
             discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
             # -> discriminator always needs to return a tuple
+            log_dict_disc = send_metrics_to_device(log_dict_disc, self.device)
+
             self.log_dict(
                 log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True
             )
@@ -339,9 +347,12 @@ class AutoencodingEngine(AbstractAutoencoder):
             extra_info["optimizer_idx"] = 1
             discloss, log_dict_disc = self.loss(x, xrec, **extra_info)
             full_log_dict.update(log_dict_disc)
+
+        full_log_dict = send_metrics_to_device(full_log_dict, self.device)
+
         self.log(
             f"val{postfix}/loss/rec",
-            log_dict_ae[f"val{postfix}/loss/rec"],
+            full_log_dict[f"val{postfix}/loss/rec"],
             sync_dist=True,
         )
         self.log_dict(full_log_dict, sync_dist=True)
@@ -560,6 +571,8 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 aeloss = out_loss
                 log_dict_ae = {"train/loss/rec": aeloss.detach()}
 
+            full_log_dict = send_metrics_to_device(full_log_dict, self.device)
+
             self.log_dict(
                 log_dict_ae,
                 prog_bar=False,
@@ -581,6 +594,9 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
             # discriminator
             discloss, log_dict_disc = self.loss(fmri, xrec, **extra_info)
             # -> discriminator always needs to return a tuple
+
+            log_dict_disc = send_metrics_to_device(log_dict_disc, self.device)
+
             self.log_dict(
                 log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True
             )
@@ -630,11 +646,16 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
             extra_info["optimizer_idx"] = 1
             _, log_dict_disc = self.loss(fmri, xrec, **extra_info)
             full_log_dict.update(log_dict_disc)
+
+        # Send all metrics to self.device
+        full_log_dict = send_metrics_to_device(full_log_dict, self.device)
+
         self.log(
             f"val{postfix}/loss/rec",
-            log_dict_ae[f"val{postfix}/loss/rec"],
+            full_log_dict[f"val{postfix}/loss/rec"],
             sync_dist=True,
         )
+
         self.log_dict(full_log_dict, sync_dist=True)
         return full_log_dict
 
