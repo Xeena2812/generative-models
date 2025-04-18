@@ -56,13 +56,22 @@ class AbstractAutoencoder(pl.LightningModule):
     def apply_ckpt(self, ckpt: Union[None, str, dict]):
         if ckpt is None:
             return
-        if isinstance(ckpt, str):
-            ckpt = {
-                "target": "sgm.modules.checkpoint.CheckpointEngine",
-                "params": {"ckpt_path": ckpt},
-            }
-        engine = instantiate_from_config(ckpt)
-        engine(self)
+        if ckpt.endswith("ckpt"):
+            sd = torch.load(ckpt, map_location="cpu")["state_dict"]
+        elif ckpt.endswith("safetensors"):
+            raise NotImplementedError
+        else:
+            raise NotImplementedError
+
+        missing, unexpected = self.load_state_dict(sd, strict=False)
+        print(
+            f"Restored from {ckpt} with {len(missing)} missing and {len(unexpected)} unexpected keys"
+        )
+
+        if len(missing) > 0:
+            print(f"Missing Keys: {missing}")
+        if len(unexpected) > 0:
+            print(f"Unexpected Keys: {unexpected}")
 
     @abstractmethod
     def get_input(self, batch) -> Any:
