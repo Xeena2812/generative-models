@@ -557,6 +557,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "global_step": self.global_step,
                 "split": "val",
                 "last_layer": self.decoder.get_last_layer(),
+                "weights" : 1e-4
             }
         else:
             extra_info = dict()
@@ -630,6 +631,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "global_step": self.global_step,
                 "split": "val",
                 "last_layer": self.decoder.get_last_layer(),
+                "weights" : 1e-4
             }
         else:
             extra_info = dict()
