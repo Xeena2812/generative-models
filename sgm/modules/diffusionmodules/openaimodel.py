@@ -618,6 +618,42 @@ class UNetModel(nn.Module):
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
 
+        def get_attention_layer(
+            dim,
+            ch,
+            num_heads,
+            dim_head,
+            depth,
+            context_dim,
+            disable_self_attn,
+            use_linear,
+            attn_type,
+            use_checkpoint
+            ):
+            return SpatialVideoTransformer(
+                in_channels=ch,
+                n_heads=num_heads,
+                d_head=dim_head,
+                depth=depth,
+                context_dim=context_dim,
+                disable_self_attn=disable_self_attn,
+                use_linear=use_linear,
+                attn_mode=attn_type,
+                checkpoint=use_checkpoint,
+            ) if dims == 3 else SpatialTransformer(
+                in_channels=ch,
+                n_heads=num_heads,
+                d_head=dim_head,
+                depth=depth,
+                context_dim=context_dim,
+                disable_self_attn=disable_self_attn,
+                use_linear=use_linear,
+                attn_type=attn_type,
+                use_checkpoint=use_checkpoint,
+            )
+
+        self.attn_cls = SpatialVideoTransformer if dims == 3 else SpatialTransformer
+
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
             linear(model_channels, time_embed_dim),
@@ -694,16 +730,17 @@ class UNetModel(nn.Module):
                         or nr < num_attention_blocks[level]
                     ):
                         layers.append(
-                            SpatialTransformer(
+                            get_attention_layer(
+                                dims,
                                 ch,
                                 num_heads,
                                 dim_head,
-                                depth=transformer_depth[level],
-                                context_dim=context_dim,
-                                disable_self_attn=disabled_sa,
-                                use_linear=use_linear_in_transformer,
-                                attn_type=spatial_transformer_attn_type,
-                                use_checkpoint=use_checkpoint,
+                                transformer_depth[level],
+                                context_dim,
+                                disabled_sa,
+                                use_linear_in_transformer,
+                                spatial_transformer_attn_type,
+                                use_checkpoint
                             )
                         )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -750,16 +787,17 @@ class UNetModel(nn.Module):
                 use_checkpoint=use_checkpoint,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-            SpatialTransformer(
+            get_attention_layer(
+                dims,
                 ch,
                 num_heads,
                 dim_head,
-                depth=transformer_depth_middle,
-                context_dim=context_dim,
-                disable_self_attn=disable_middle_self_attn,
-                use_linear=use_linear_in_transformer,
-                attn_type=spatial_transformer_attn_type,
-                use_checkpoint=use_checkpoint,
+                transformer_depth_middle,
+                context_dim,
+                disable_middle_self_attn,
+                use_linear_in_transformer,
+                spatial_transformer_attn_type,
+                use_checkpoint
             )
             if not disable_middle_transformer
             else th.nn.Identity(),
@@ -807,16 +845,17 @@ class UNetModel(nn.Module):
                         or i < num_attention_blocks[level]
                     ):
                         layers.append(
-                            SpatialTransformer(
+                            get_attention_layer(
+                                dims,
                                 ch,
                                 num_heads,
                                 dim_head,
-                                depth=transformer_depth[level],
-                                context_dim=context_dim,
-                                disable_self_attn=disabled_sa,
-                                use_linear=use_linear_in_transformer,
-                                attn_type=spatial_transformer_attn_type,
-                                use_checkpoint=use_checkpoint,
+                                transformer_depth[level],
+                                context_dim,
+                                disabled_sa,
+                                use_linear_in_transformer,
+                                spatial_transformer_attn_type,
+                                use_checkpoint
                             )
                         )
                 if level and i == self.num_res_blocks[level]:
