@@ -672,6 +672,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
     @torch.no_grad()
     def sample(self, batch_size: int, **kwargs):
         # b x 4 x 8 x 8 x 10
+        # regularization halves the second or 3rd axis, so maybe try creating random z with double initial dim?
         z = torch.randn(size=(batch_size, *self.decoder.z_shape[1:]), device=self.device)
 
         dec = self.decode(z, **kwargs)
