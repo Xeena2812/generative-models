@@ -726,12 +726,12 @@ class SpatialTransformer3DWrapper(SpatialTransformer):
     def __init__(
         self, *args, **kwargs
     ):
-        super.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def forward(self, x, *args, **kwargs):
         B, C, D, H, W = x.shape
         x_flattened = rearrange(x, "b c d h w -> (b d) c h w", b=B, d=D)
-        x_out = super.forward(x_flattened, *args, **kwargs)
+        x_out = super().forward(x_flattened, *args, **kwargs)
         x_reshaped = rearrange(x_out, "(b d) c h w -> b c d h w", b=B, d=D)
 
         return x_reshaped
