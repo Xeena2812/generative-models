@@ -10,6 +10,7 @@ from einops import rearrange
 from torch.utils.checkpoint import checkpoint
 
 from ...modules.attention import SpatialTransformer
+from ...modules.attention import SpatialTransformer3DWrapper
 from ...modules.diffusionmodules.util import (avg_pool_nd, conv_nd, linear,
                                               normalization,
                                               timestep_embedding, zero_module)
@@ -630,7 +631,7 @@ class UNetModel(nn.Module):
             attn_type,
             use_checkpoint
             ):
-            return SpatialVideoTransformer(
+            return SpatialTransformer3DWrapper(
                 in_channels=ch,
                 n_heads=num_heads,
                 d_head=dim_head,
@@ -638,8 +639,8 @@ class UNetModel(nn.Module):
                 context_dim=context_dim,
                 disable_self_attn=disable_self_attn,
                 use_linear=use_linear,
-                attn_mode=attn_type,
-                checkpoint=use_checkpoint,
+                attn_type=attn_type,
+                use_checkpoint=use_checkpoint,
             ) if dims == 3 else SpatialTransformer(
                 in_channels=ch,
                 n_heads=num_heads,
