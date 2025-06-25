@@ -273,3 +273,15 @@ def get_nested_attribute(obj, attribute_path, depth=None, return_key=False):
             current_attribute = getattr(current_attribute, attribute)
 
     return (current_attribute, current_key) if return_key else current_attribute
+
+def get_monai_encoder_module(target_cls, *args, **kwargs):
+    ae = instantiate_from_config(target_cls, *args, **kwargs)
+    return ae.encoder # Needs to be changed to encode for AE/VAE
+
+def get_monai_decoder_module(target_cls, *args, **kwargs):
+    ae = instantiate_from_config(target_cls, *args, **kwargs)
+    return ae.decoder
+
+def get_monai_encoded_channels(target_cls, *args, **kwargs):
+    ae = instantiate_from_config(target_cls, *args, **kwargs)
+    return ae.encoded_channels
