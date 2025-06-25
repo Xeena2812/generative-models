@@ -14,16 +14,23 @@ from packaging import version
 
 from ..modules.autoencoding.regularizers import AbstractRegularizer
 from ..modules.ema import LitEma
-from ..util import (default, get_nested_attribute, get_obj_from_str,
-                    instantiate_from_config,)
+from ..util import (
+    default,
+    get_nested_attribute,
+    get_obj_from_str,
+    instantiate_from_config,
+)
 from ..modules.diffusionmodules.util import AdaptiveInstanceNorm
 from ..modules.autoencoding.losses.lpips_nd import LPIPSWithDiscriminator
 
 logpy = logging.getLogger(__name__)
 
+
 def send_metrics_to_device(metrics_dict, device):
-    return {k: (v.to(device) if isinstance(v, torch.Tensor) else v)
-                for k, v in metrics_dict.items()}
+    return {
+        k: (v.to(device) if isinstance(v, torch.Tensor) else v)
+        for k, v in metrics_dict.items()
+    }
 
 
 class AbstractAutoencoder(pl.LightningModule):
@@ -207,10 +214,8 @@ class AutoencodingEngine(AbstractAutoencoder):
             params = []
         return params
 
-
     def get_last_layer(self):
         return self.decoder.get_last_layer()
-
 
     def encode(
         self,
@@ -460,14 +465,18 @@ class AutoencodingEngine(AbstractAutoencoder):
             log[log_str] = xrec_add
         return log
 
+
 class MLHDPAutoencodingEngine(AutoencodingEngine):
     """AutoencodingEngine extended with class conditioning and multiple inputs (for ROIs, connectomes). Class conditioning is implemented by passing the classes to both the encoder and the decoder. The conditioning input is in `additional_decode_kwargs` as the `cond` argument."""
+
     # TODO: Modify encode/decode to account for class and connectome conditioning
     # # TODO: Add sampling capability
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self.input_keys = input_keys # DO NOT confuse with input_key, this contain
-        print(f"additional_decode_kwargs: {[item + ", " for item in self.additional_decode_keys]}")
+        print(
+            f"additional_decode_kwargs: {[item + ', ' for item in self.additional_decode_keys]}"
+        )
 
         self.connectome_cond = False
         if {"roi", "connectome"}.issubset(self.additional_decode_keys):
@@ -480,7 +489,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
             nn.ReLU(),
             nn.Conv2d(4, 8, kernel_size=3, stride=2, padding=1),  # Reduced kernel size
             nn.ReLU(),
-            nn.Flatten()
+            nn.Flatten(),
         )
 
         # Calculate the output size of the convolutional layers
@@ -490,9 +499,14 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
             test_out = self.condition_embed(test_tensor)
             self._conv_end_shape = test_out.shape[-1]
 
-        embed_linear = nn.Linear(self._conv_end_shape, reduce(lambda a, b: a * b, self.decoder.z_shape[1:], 1))
+        embed_linear = nn.Linear(
+            self._conv_end_shape,
+            reduce(lambda a, b: a * b, self.decoder.z_shape[1:], 1),
+        )
 
-        self.condition_embed = nn.Sequential(self.condition_embed, embed_linear, nn.ReLU())
+        self.condition_embed = nn.Sequential(
+            self.condition_embed, embed_linear, nn.ReLU()
+        )
 
         self.adain = AdaptiveInstanceNorm()
 
@@ -503,7 +517,6 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
 
         return params
 
-
     def get_input(self, batch: dict, key: str) -> torch.Tensor:
         return batch[key] if key in batch.keys() else None
 
@@ -513,7 +526,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         x: torch.Tensor,
         return_reg_log: bool = False,
         unregularized: bool = False,
-        **kwargs
+        **kwargs,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
         z = self.encoder(x, **kwargs)
         if unregularized:
@@ -523,14 +536,21 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
             return z, reg_log
         return z
 
-
     def forward(
         self, x: torch.Tensor, **additional_decode_kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
         z, reg_log = self.encode(x, return_reg_log=True, **additional_decode_kwargs)
 
         if self.connectome_cond:
-            condition_embedding = self.condition_embed(torch.stack([self.additional_decode_keys["roi"], self.additional_decode_keys["connectome"]]), axis=1)
+            condition_embedding = self.condition_embed(
+                torch.stack(
+                    [
+                        self.additional_decode_keys["roi"],
+                        self.additional_decode_keys["connectome"],
+                    ]
+                ),
+                axis=1,
+            )
             condition_embedding = condition_embedding.view(
                 condition_embedding.shape[0], *self.decoder.z_shape[1:]
             )
@@ -539,12 +559,12 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         dec = self.decode(z, **additional_decode_kwargs)
         return z, dec, reg_log
 
-
     def inner_training_step(
         self, batch: dict, batch_idx: int, optimizer_idx: int = 0
     ) -> torch.Tensor:
         additional_decode_kwargs = {
-            key: self.get_input(batch, key) for key in self.additional_decode_keys.intersection(batch)
+            key: self.get_input(batch, key)
+            for key in self.additional_decode_keys.intersection(batch)
         }
         fmri = self.get_input(batch, self.input_key)
 
@@ -566,7 +586,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "global_step": self.global_step,
                 "split": "val",
                 "last_layer": self.decoder.get_last_layer(),
-                "weights" : 1e-4
+                "weights": 1e-4,
             }
         else:
             extra_info = dict()
@@ -614,10 +634,10 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
         else:
             raise NotImplementedError(f"Unknown optimizer {optimizer_idx}")
 
-
     def _validation_step(self, batch: dict, batch_idx: int, postfix: str = "") -> Dict:
         additional_decode_kwargs = {
-            key: self.get_input(batch, key) for key in self.additional_decode_keys.intersection(batch)
+            key: self.get_input(batch, key)
+            for key in self.additional_decode_keys.intersection(batch)
         }
         fmri = self.get_input(batch, self.input_key)
 
@@ -640,7 +660,7 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
                 "global_step": self.global_step,
                 "split": "val",
                 "last_layer": self.decoder.get_last_layer(),
-                "weights" : 1e-4
+                "weights": 1e-4,
             }
         else:
             extra_info = dict()
@@ -675,7 +695,9 @@ class MLHDPAutoencodingEngine(AutoencodingEngine):
     def sample(self, batch_size: int, **kwargs):
         # b x 4 x 8 x 8 x 10
         # regularization halves the second or 3rd axis, so maybe try creating random z with double initial dim?
-        z = torch.randn(size=(batch_size, *self.decoder.z_shape[1:]), device=self.device)
+        z = torch.randn(
+            size=(batch_size, *self.decoder.z_shape[1:]), device=self.device
+        )
         # z = torch.stack([z, z], dim=1)
 
         dec = self.decode(z, **kwargs)
@@ -760,8 +782,7 @@ class AutoencoderKL(AutoencodingEngineLegacy):
         super().__init__(
             regularizer_config={
                 "target": (
-                    "sgm.modules.autoencoding.regularizers"
-                    ".DiagonalGaussianRegularizer"
+                    "sgm.modules.autoencoding.regularizers.DiagonalGaussianRegularizer"
                 )
             },
             **kwargs,
@@ -782,7 +803,7 @@ class AutoencoderLegacyVQ(AutoencodingEngineLegacy):
         super().__init__(
             regularizer_config={
                 "target": (
-                    "sgm.modules.autoencoding.regularizers.quantize" ".VectorQuantizer"
+                    "sgm.modules.autoencoding.regularizers.quantize.VectorQuantizer"
                 ),
                 "params": {
                     "n_e": n_embed,
@@ -818,17 +839,17 @@ class AEIntegerWrapper(nn.Module):
     ):
         super().__init__()
         self.model = model
-        assert hasattr(model, "encode") and hasattr(
-            model, "decode"
-        ), "Need AE interface"
+        assert hasattr(model, "encode") and hasattr(model, "decode"), (
+            "Need AE interface"
+        )
         self.regularization = get_nested_attribute(model, regularization_key)
         self.shape = shape
         self.encoder_kwargs = default(encoder_kwargs, {"return_reg_log": True})
 
     def encode(self, x) -> torch.Tensor:
-        assert (
-            not self.training
-        ), f"{self.__class__.__name__} only supports inference currently"
+        assert not self.training, (
+            f"{self.__class__.__name__} only supports inference currently"
+        )
         _, log = self.model.encode(x, **self.encoder_kwargs)
         assert isinstance(log, dict)
         inds = log["min_encoding_indices"]
@@ -854,8 +875,7 @@ class AutoencoderKLModeOnly(AutoencodingEngineLegacy):
         super().__init__(
             regularizer_config={
                 "target": (
-                    "sgm.modules.autoencoding.regularizers"
-                    ".DiagonalGaussianRegularizer"
+                    "sgm.modules.autoencoding.regularizers.DiagonalGaussianRegularizer"
                 ),
                 "params": {"sample": False},
             },
