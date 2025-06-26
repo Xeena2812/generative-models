@@ -132,6 +132,7 @@ class AutoencodingEngine(AbstractAutoencoder):
     def __init__(
         self,
         *args,
+        input_shape: List[int],
         encoder_config: Dict,
         decoder_config: Dict,
         loss_config: Dict,
@@ -152,6 +153,7 @@ class AutoencodingEngine(AbstractAutoencoder):
         super().__init__(*args, **kwargs)
         self.automatic_optimization = False  # pytorch lightning
 
+        self.input_shape = input_shape
         self.encoder: torch.nn.Module = instantiate_from_config(encoder_config)
         self.decoder: torch.nn.Module = instantiate_from_config(decoder_config)
         self.loss: torch.nn.Module = instantiate_from_config(loss_config)
@@ -422,6 +424,23 @@ class AutoencodingEngine(AbstractAutoencoder):
             opts.append(opt_disc)
 
         return opts
+
+    @torch.no_grad()
+    def sample(self, batch_size: int, **kwargs):
+        # b x 4 x 8 x 8 x 10
+        # regularization halves the second or 3rd axis, so maybe try creating random z with double initial dim?
+        tmp = torch.zeros(
+            size=(1, self.encoder.in_channels, *self.input_shape), device=self.device
+        )
+        latent = self.encode(tmp)
+        if isinstance(latent, tuple):
+            latent = latent[0]
+
+        z = torch.randn(size=(batch_size, *latent.shape[1:]), device=self.device)
+        # z = torch.stack([z, z], dim=1)
+
+        dec = self.decode(z)
+        return dec
 
     @torch.no_grad()
     def log_images(
