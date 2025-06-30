@@ -69,7 +69,7 @@ class AbstractEmbModel(nn.Module):
 
 
 class GeneralConditioner(nn.Module):
-    OUTPUT_DIM2KEYS = {2: "vector", 3: "crossattn", 4: "concat"} # , 5: "concat"}
+    OUTPUT_DIM2KEYS = {1: "scalar", 2: "vector", 3: "crossattn", 4: "concat"} # , 5: "concat"}
     KEY2CATDIM = {"vector": 1, "crossattn": 2, "concat": 1, "cond_view": 1, "cond_motion": 1}
 
     def __init__(self, emb_models: Union[List, ListConfig]):

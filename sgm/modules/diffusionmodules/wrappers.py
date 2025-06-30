@@ -43,3 +43,17 @@ class OpenAIWrapper(IdentityWrapper):
                 y=c.get("vector", None),
                 **kwargs,
             )
+
+
+class MONAIWrapper(IdentityWrapper):
+    def forward(
+        self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
+    ) -> torch.Tensor:
+        x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
+        return self.diffusion_model(
+            x,
+            timesteps=t,
+            context=c.get("crossattn", None),
+            class_labels=c.get("scalar", None),
+            **kwargs,
+        )
