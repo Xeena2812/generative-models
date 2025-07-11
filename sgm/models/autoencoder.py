@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from packaging import version
+import numpy as np
 
 from ..modules.autoencoding.regularizers import AbstractRegularizer
 from ..modules.ema import LitEma
@@ -191,6 +192,7 @@ class AutoencodingEngine(AbstractAutoencoder):
             logpy.warn("Checkpoint path is deprecated, use `checkpoint_egnine` instead")
         self.apply_ckpt(default(ckpt_path, ckpt_engine))
         self.additional_decode_keys = set(default(additional_decode_keys, []))
+        self.latent_shape = None
 
     def get_input(self, batch: Dict) -> torch.Tensor:
         # assuming unified data format, dataloader returns a dict.
@@ -218,6 +220,18 @@ class AutoencodingEngine(AbstractAutoencoder):
 
     def get_last_layer(self):
         return self.decoder.get_last_layer()
+
+    def setup(self, stage: str) -> None:
+        if stage == "fit" and self.latent_shape is None:
+            dataloader = self.trainer.datamodule.train_dataloader()
+            batch = next(iter(dataloader))
+            x = self.get_input(batch)
+
+            with torch.no_grad():
+                z = self.encode(x)
+
+            self.latent_shape = tuple(z.shape[1:])
+            print(f"Calculated latent shape: {self.latent_shape}")
 
     def encode(
         self,
@@ -427,19 +441,9 @@ class AutoencodingEngine(AbstractAutoencoder):
 
     @torch.no_grad()
     def sample(self, batch_size: int, **kwargs):
-        # b x 4 x 8 x 8 x 10
-        # regularization halves the second or 3rd axis, so maybe try creating random z with double initial dim?
-        tmp = torch.zeros(
-            size=(1, self.encoder.in_channels, *self.input_shape), device=self.device
-        )
-        latent = self.encode(tmp)
-        if isinstance(latent, tuple):
-            latent = latent[0]
-
-        z = torch.randn(size=(batch_size, *latent.shape[1:]), device=self.device)
-        # z = torch.stack([z, z], dim=1)
-
+        z = torch.randn(size=(batch_size, *self.latent_shape), device=self.device)
         dec = self.decode(z)
+
         return dec
 
     @torch.no_grad()
