@@ -12,8 +12,13 @@ from ..modules import UNCONDITIONAL_CONFIG
 from ..modules.autoencoding.temporal_ae import VideoDecoder
 from ..modules.diffusionmodules.wrappers import OPENAIUNETWRAPPER
 from ..modules.ema import LitEma
-from ..util import (default, disabled_train, get_obj_from_str,
-                    instantiate_from_config, log_txt_as_img)
+from ..util import (
+    default,
+    disabled_train,
+    get_obj_from_str,
+    instantiate_from_config,
+    log_txt_as_img,
+)
 
 
 class DiffusionEngine(pl.LightningModule):
@@ -102,6 +107,9 @@ class DiffusionEngine(pl.LightningModule):
         if len(unexpected) > 0:
             print(f"Unexpected Keys: {unexpected}")
 
+    def setup(self, stage: str) -> None:
+        self.first_stage_model.setup(stage)
+
     def _init_first_stage(self, config):
         model = instantiate_from_config(config).eval()
         model.train = disabled_train
@@ -163,6 +171,30 @@ class DiffusionEngine(pl.LightningModule):
         return loss, loss_dict
 
     def training_step(self, batch, batch_idx):
+        loss, loss_dict = self.shared_step(batch)
+
+        self.log_dict(
+            loss_dict, prog_bar=True, logger=True, on_step=True, on_epoch=False
+        )
+
+        self.log(
+            "global_step",
+            self.global_step,
+            prog_bar=True,
+            logger=True,
+            on_step=True,
+            on_epoch=False,
+        )
+
+        if self.scheduler_config is not None:
+            lr = self.optimizers().param_groups[0]["lr"]
+            self.log(
+                "lr_abs", lr, prog_bar=True, logger=True, on_step=True, on_epoch=False
+            )
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
         loss, loss_dict = self.shared_step(batch)
 
         self.log_dict(
