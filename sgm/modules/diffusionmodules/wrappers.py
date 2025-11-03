@@ -57,3 +57,10 @@ class MONAIWrapper(IdentityWrapper):
             class_labels=c.get("scalar", None),
             **kwargs,
         )
+
+
+class GNNWrapper(IdentityWrapper):
+    def forward(
+        self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
+    ) -> torch.Tensor:
+        return self.diffusion_model(x=x, edge_index=kwargs["edge_index"], timestep=t)

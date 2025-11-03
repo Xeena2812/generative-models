@@ -65,7 +65,7 @@ class StandardDiffusionLoss(nn.Module):
         batch: Dict,
     ) -> Tuple[torch.Tensor, Dict]:
         additional_model_inputs = {
-            key: batch[key] for key in self.batch2model_keys.intersection(batch)
+            key: batch[key] for key in self.batch2model_keys.intersection(batch.keys())
         }
         sigmas = self.sigma_sampler(input.shape[0]).to(input)
 
