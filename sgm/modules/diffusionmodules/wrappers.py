@@ -63,4 +63,4 @@ class GNNWrapper(IdentityWrapper):
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
     ) -> torch.Tensor:
-        return self.diffusion_model(x=x, edge_index=kwargs["edge_index"], timestep=t)
+        return self.diffusion_model(x=x, timestep=t, **kwargs)
