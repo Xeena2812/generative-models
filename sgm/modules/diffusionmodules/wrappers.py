@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from packaging import version
+import numpy as np
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
@@ -63,4 +64,29 @@ class GNNWrapper(IdentityWrapper):
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
     ) -> torch.Tensor:
-        return self.diffusion_model(x=x, timestep=t, **kwargs)
+        # TODO: Replace with vectorized solution.
+        batch_size = kwargs["batch_size"]
+        num_nodes = 400
+        new_computed_edge_indices = []
+        for i in range(batch_size):
+            computed_edges = self.compute_edges(
+                x[i * (num_nodes) : (i + 1) * num_nodes]
+            )
+            computed_edges += i * num_nodes
+            new_computed_edge_indices.append(computed_edges)
+
+        concat_new_indices = torch.cat(new_computed_edge_indices, axis=1)
+        edge_index = concat_new_indices
+
+        return self.diffusion_model(x=x, t=t, edge_index=edge_index, **kwargs)
+
+    def compute_edges(self, corr, threshold=5):
+        """construct adjacency matrix from the given correlation matrix and threshold. Taken from NeuroGraph code: https://github.com/Anwar-Said/NeuroGraph/blob/main/NeuroGraph/preprocess.py#L274
+        Threshold is set to top 5%, for HCPTask dataset."""
+        corr_matrix_copy = corr.detach().clone().to("cpu")
+        threshold = np.percentile(
+            corr_matrix_copy[corr_matrix_copy > 0], 100 - threshold
+        )
+        corr_matrix_copy[corr_matrix_copy < threshold] = 0
+        corr_matrix_copy[corr_matrix_copy >= threshold] = 1
+        return corr_matrix_copy.nonzero().t().to(torch.long).to(corr.device)
