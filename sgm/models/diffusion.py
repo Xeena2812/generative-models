@@ -371,3 +371,30 @@ class DiffusionEngine(pl.LightningModule):
             samples = self.decode_first_stage(samples)
             log["samples"] = samples
         return log
+
+
+class GraphDiffusionEngine(DiffusionEngine):
+    def shared_step(self, batch: Dict) -> Any:
+        x = self.get_input(batch)
+        x = self.encode_first_stage(x)
+        x = x.view(-1, x.shape[1], x.shape[1])
+        batch["global_step"] = self.global_step
+        loss, loss_dict = self(x, batch)
+        return loss, loss_dict
+
+    # @torch.no_grad()
+    # def sample(
+    #     self,
+    #     cond: Dict,
+    #     uc: Union[Dict, None] = None,
+    #     batch_size: int = 16,
+    #     shape: Union[None, Tuple, List] = None,
+    #     **kwargs,
+    # ):
+    #     randn = torch.randn(batch_size, *shape).flatten(0, 1).to(self.device)
+    #     kwargs.update({"batch_size": batch_size})
+    #     denoiser = lambda input, sigma, c: self.denoiser(
+    #         self.model, input, sigma, c, **kwargs
+    #     )
+    #     samples = self.sampler(denoiser, randn, cond, uc=uc)
+    #     return samples
