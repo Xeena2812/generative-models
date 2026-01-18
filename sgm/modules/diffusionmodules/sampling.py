@@ -1,7 +1,6 @@
 """
-    Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
+Partially ported from https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py
 """
-
 
 from typing import Dict, Union
 
@@ -9,10 +8,13 @@ import torch
 from omegaconf import ListConfig, OmegaConf
 from tqdm import tqdm
 
-from ...modules.diffusionmodules.sampling_utils import (get_ancestral_step,
-                                                        linear_multistep_coeff,
-                                                        to_d, to_neg_log_sigma,
-                                                        to_sigma)
+from ...modules.diffusionmodules.sampling_utils import (
+    get_ancestral_step,
+    linear_multistep_coeff,
+    to_d,
+    to_neg_log_sigma,
+    to_sigma,
+)
 from ...util import append_dims, default, instantiate_from_config
 
 DEFAULT_GUIDER = {"target": "sgm.modules.diffusionmodules.guiders.IdentityGuider"}
@@ -106,10 +108,23 @@ class EDMSampler(SingleStepDiffusionSampler):
         )
         return x
 
-    def __call__(self, denoiser, x, cond, uc=None, num_steps=None):
+    def __call__(
+        self,
+        denoiser,
+        x,
+        cond,
+        uc=None,
+        num_steps=None,
+        return_intermediate=False,
+        **ignorekwargs,
+    ):
         x, s_in, sigmas, num_sigmas, cond, uc = self.prepare_sampling_loop(
             x, cond, uc, num_steps
         )
+
+        intermediates = []
+        if return_intermediate:
+            intermediates.append(x)
 
         for i in self.get_sigma_gen(num_sigmas):
             gamma = (
@@ -126,7 +141,11 @@ class EDMSampler(SingleStepDiffusionSampler):
                 uc,
                 gamma,
             )
+            if return_intermediate:
+                intermediates.append(x)
 
+        if return_intermediate:
+            return intermediates
         return x
 
 
