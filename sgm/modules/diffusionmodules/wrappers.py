@@ -80,7 +80,9 @@ class GNNWrapper(IdentityWrapper):
         concat_new_indices = torch.cat(new_computed_edge_indices, axis=1)
         edge_index = concat_new_indices
 
-        out = self.diffusion_model(x=x, t=t, edge_index=edge_index, **kwargs)
+        out = self.diffusion_model(
+            x=x, t=t, edge_index=edge_index, context=c.get("vector"), **kwargs
+        )
         return out.view(in_shape)
 
     def compute_edges(self, corr, threshold=5):
