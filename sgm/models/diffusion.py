@@ -382,19 +382,40 @@ class GraphDiffusionEngine(DiffusionEngine):
         loss, loss_dict = self(x, batch)
         return loss, loss_dict
 
-    # @torch.no_grad()
-    # def sample(
-    #     self,
-    #     cond: Dict,
-    #     uc: Union[Dict, None] = None,
-    #     batch_size: int = 16,
-    #     shape: Union[None, Tuple, List] = None,
-    #     **kwargs,
-    # ):
-    #     randn = torch.randn(batch_size, *shape).flatten(0, 1).to(self.device)
-    #     kwargs.update({"batch_size": batch_size})
-    #     denoiser = lambda input, sigma, c: self.denoiser(
-    #         self.model, input, sigma, c, **kwargs
-    #     )
-    #     samples = self.sampler(denoiser, randn, cond, uc=uc)
-    #     return samples
+    @torch.no_grad()
+    def sample(
+        self,
+        cond: Dict,
+        uc: Union[Dict, None] = None,
+        batch_size: int = 16,
+        shape: Union[None, Tuple, List] = None,
+        labels: Union[torch.Tensor, None] = None,
+        **kwargs,
+    ):
+        # Handle conditioning from labels if provided and cond is missing
+        if cond is None or (isinstance(cond, dict) and len(cond) == 0):
+            if labels is not None and hasattr(self, "conditioner"):
+                # Check for ClassEmbedder
+                input_keys = []
+                for embedder in self.conditioner.embedders:
+                    if "ClassEmbedder" in embedder.__class__.__name__:
+                        input_keys.append(embedder.input_key)
+
+                if len(input_keys) > 0:
+                    batch_cond = {key: labels for key in input_keys}
+                    cond, uc = self.conditioner.get_unconditional_conditioning(
+                        batch_cond
+                    )
+
+            if cond is None:
+                cond = {}
+
+        # Handle Batch Vector for Graphs
+        if "batch" not in kwargs and shape is not None:
+            # Assuming shape[0] is num_nodes (e.g. 400 in (400, 400))
+            num_nodes = shape[0]
+            kwargs["batch"] = torch.arange(
+                batch_size, device=self.device
+            ).repeat_interleave(num_nodes)
+
+        return super().sample(cond, uc=uc, batch_size=batch_size, shape=shape, **kwargs)
