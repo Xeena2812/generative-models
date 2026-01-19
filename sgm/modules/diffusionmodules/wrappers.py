@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from packaging import version
-import numpy as np
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
