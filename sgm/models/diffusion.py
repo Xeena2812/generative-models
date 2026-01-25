@@ -218,6 +218,9 @@ class DiffusionEngine(pl.LightningModule):
 
         return loss
 
+    def test_step(self, batch, batch_idx):
+        pass
+
     def on_train_start(self, *args, **kwargs):
         if self.sampler is None or self.loss_fn is None:
             raise ValueError("Sampler and loss function need to be set for training.")
