@@ -91,11 +91,11 @@ class GNNWrapper(IdentityWrapper):
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
     ) -> torch.Tensor:
-        # batch_size = kwargs["batch_size"]
+        # Assumes data is in shape (B, N, N)
         in_shape = x.shape
         batch_size = x.shape[0]
         x = x.flatten(0, 1)
-        num_nodes = 400
+        num_nodes = x.shape[1]
 
         new_computed_edge_indices = []
         if self.static_edge_index is not None:
