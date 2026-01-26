@@ -1,6 +1,15 @@
 import torch
 import torch.nn as nn
+import os
 from packaging import version
+from ...util import instantiate_from_config
+
+try:
+    from data_utils.utils import compute_edges
+except ModuleNotFoundError:
+    print(
+        "Warning: data_utils module not found. Can't run GNNWrapper. Copy the module from the parent repo, or implement the missing methods."
+    )
 
 OPENAIUNETWRAPPER = "sgm.modules.diffusionmodules.wrappers.OpenAIWrapper"
 
@@ -60,6 +69,25 @@ class MONAIWrapper(IdentityWrapper):
 
 
 class GNNWrapper(IdentityWrapper):
+    def __init__(
+        self,
+        diffusion_model,
+        compile_model: bool = False,
+        static_edge_path: str = None,
+    ):
+        super().__init__(
+            instantiate_from_config(diffusion_model), compile_model=compile_model
+        )
+        self.static_edge_index = None
+        if static_edge_path is not None:
+            if os.path.exists(static_edge_path):
+                self.static_edge_index = torch.load(static_edge_path)
+                print(f"GNNWrapper: Loaded static edges from {static_edge_path}")
+            else:
+                print(
+                    f"GNNWrapper: Warning - Static edge path {static_edge_path} not found. Will compute dynamically."
+                )
+
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
     ) -> torch.Tensor:
@@ -68,29 +96,23 @@ class GNNWrapper(IdentityWrapper):
         batch_size = x.shape[0]
         x = x.flatten(0, 1)
         num_nodes = 400
+
         new_computed_edge_indices = []
-        for i in range(batch_size):
-            computed_edges = self.compute_edges(
-                x[i * (num_nodes) : (i + 1) * num_nodes]
-            )
-            computed_edges += i * num_nodes
-            new_computed_edge_indices.append(computed_edges)
+        if self.static_edge_index is not None:
+            if self.static_edge_index.device != x.device:
+                self.static_edge_index = self.static_edge_index.to(x.device)
 
-        concat_new_indices = torch.cat(new_computed_edge_indices, axis=1)
-        edge_index = concat_new_indices
+            for i in range(batch_size):
+                # Offset the static edges for each graph in the batch
+                new_computed_edge_indices.append(self.static_edge_index + i * num_nodes)
+        else:
+            for i in range(batch_size):
+                computed_edges = compute_edges(x[i * (num_nodes) : (i + 1) * num_nodes])
+                computed_edges += i * num_nodes
+                new_computed_edge_indices.append(computed_edges)
 
+        edge_index = torch.cat(new_computed_edge_indices, axis=1)
         out = self.diffusion_model(
             x=x, t=t, edge_index=edge_index, context=c.get("vector"), **kwargs
         )
         return out.view(in_shape)
-
-    def compute_edges(self, corr, threshold=5):
-        """construct adjacency matrix from the given correlation matrix and threshold. Taken from NeuroGraph code: https://github.com/Anwar-Said/NeuroGraph/blob/main/NeuroGraph/preprocess.py#L274
-        Threshold is set to top 5%, for HCPTask dataset."""
-        corr_matrix_copy = corr.clone()
-        threshold = torch.quantile(
-            corr_matrix_copy[corr_matrix_copy > 0], (100 - threshold) / 100.0
-        )
-        corr_matrix_copy[corr_matrix_copy < threshold] = 0
-        corr_matrix_copy[corr_matrix_copy >= threshold] = 1
-        return corr_matrix_copy.nonzero().t().to(torch.long)

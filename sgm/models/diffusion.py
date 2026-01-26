@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
-from omegaconf import ListConfig, OmegaConf
+from omegaconf import ListConfig, OmegaConf, DictConfig
 from safetensors.torch import load_file as load_safetensors
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -51,9 +51,13 @@ class DiffusionEngine(pl.LightningModule):
             optimizer_config, {"target": "torch.optim.AdamW"}
         )
         model = instantiate_from_config(network_config)
-        self.model = get_obj_from_str(default(network_wrapper, OPENAIUNETWRAPPER))(
-            model, compile_model=compile_model
-        )
+        nw = default(network_wrapper, OPENAIUNETWRAPPER)
+        if isinstance(nw, (dict, DictConfig, ListConfig, OmegaConf)):
+            nw["params"]["diffusion_model"] = network_config
+            nw["params"]["compile_model"] = compile_model
+            self.model = instantiate_from_config(nw)
+        else:
+            self.model = get_obj_from_str(nw)(model, compile_model=compile_model)
 
         self.denoiser = instantiate_from_config(denoiser_config)
         self.sampler = (
