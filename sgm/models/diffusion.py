@@ -52,10 +52,10 @@ class DiffusionEngine(pl.LightningModule):
         )
         model = instantiate_from_config(network_config)
         nw = default(network_wrapper, OPENAIUNETWRAPPER)
-        if isinstance(nw, (dict, DictConfig, ListConfig, OmegaConf)):
-            nw["params"]["diffusion_model"] = network_config
-            nw["params"]["compile_model"] = compile_model
-            self.model = instantiate_from_config(nw)
+        if not isinstance(nw, str):
+            self.model = get_obj_from_str(nw["target"])(
+                model, compile_model=compile_model, **nw.get("params", dict())
+            )
         else:
             self.model = get_obj_from_str(nw)(model, compile_model=compile_model)
 

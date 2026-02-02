@@ -75,9 +75,9 @@ class GNNWrapper(IdentityWrapper):
         compile_model: bool = False,
         static_edge_path: str = None,
     ):
-        super().__init__(
-            instantiate_from_config(diffusion_model), compile_model=compile_model
-        )
+        if not isinstance(diffusion_model, nn.Module):
+            diffusion_model = instantiate_from_config(diffusion_model)
+        super().__init__(diffusion_model, compile_model=compile_model)
         self.static_edge_index = None
         if static_edge_path is not None:
             if os.path.exists(static_edge_path):
@@ -91,11 +91,11 @@ class GNNWrapper(IdentityWrapper):
     def forward(
         self, x: torch.Tensor, t: torch.Tensor, c: dict, **kwargs
     ) -> torch.Tensor:
-        # Assumes data is in shape (B, N, N)
+        # Assumes data is in shape (B, N, C)
         in_shape = x.shape
         batch_size = x.shape[0]
-        x = x.flatten(0, 1)
         num_nodes = x.shape[1]
+        x = x.flatten(0, 1)
 
         new_computed_edge_indices = []
         if self.static_edge_index is not None:
@@ -107,12 +107,25 @@ class GNNWrapper(IdentityWrapper):
                 new_computed_edge_indices.append(self.static_edge_index + i * num_nodes)
         else:
             for i in range(batch_size):
-                computed_edges = compute_edges(x[i * (num_nodes) : (i + 1) * num_nodes])
+                computed_edges = compute_edges(x[i * num_nodes : (i + 1) * num_nodes])
                 computed_edges += i * num_nodes
                 new_computed_edge_indices.append(computed_edges)
 
         edge_index = torch.cat(new_computed_edge_indices, axis=1)
+
+        if "batch" not in kwargs.keys():
+            batch = torch.arange(batch_size, device=x.device).repeat_interleave(
+                num_nodes
+            )
+        else:
+            batch = kwargs.pop("batch")
+
         out = self.diffusion_model(
-            x=x, t=t, edge_index=edge_index, context=c.get("vector"), **kwargs
+            x=x,
+            t=t,
+            edge_index=edge_index,
+            context=c.get("vector"),
+            batch=batch,
+            **kwargs,
         )
         return out.view(in_shape)
